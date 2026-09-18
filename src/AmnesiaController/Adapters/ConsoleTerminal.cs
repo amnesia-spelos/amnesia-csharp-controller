@@ -200,6 +200,7 @@ internal sealed class ConsoleTerminal
             (Direction.Sent, _) => "\e[1m",
             (_, LineCategory.Response) => "\e[32m",
             (_, LineCategory.Event) => "\e[35m",
+            (_, LineCategory.State) => "\e[34m",
             (_, LineCategory.Warning) => "\e[33m",
             (_, LineCategory.ScriptCall) => "\e[90m",
             (_, LineCategory.Greeting) => "\e[36m",

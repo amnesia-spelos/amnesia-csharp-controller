@@ -6,6 +6,7 @@ internal static class LineCategories
     [
         ("RESPONSE:", LineCategory.Response),
         ("EVENT:", LineCategory.Event),
+        ("STATE ", LineCategory.State),
         ("WARNING:", LineCategory.Warning),
         ("SCRIPT_CALL:", LineCategory.ScriptCall),
         ("Hello, from Amnesia", LineCategory.Greeting),
@@ -15,6 +16,7 @@ internal static class LineCategories
     {
         ["response"] = LineCategory.Response,
         ["event"] = LineCategory.Event,
+        ["state"] = LineCategory.State,
         ["warning"] = LineCategory.Warning,
         ["script_call"] = LineCategory.ScriptCall,
         ["greeting"] = LineCategory.Greeting,

@@ -56,6 +56,27 @@ _ = Task.Run(async () =>
         Report(controller.TimePassed);
 });
 
+// At most one wakeup is pending; a newer one supersedes it. The core also ignores stale tokens.
+CancellationTokenSource? pendingWakeup = null;
+
+async Task WakeAsync(ScheduleWakeup wakeup, CancellationToken cancellation)
+{
+    // Task.Delay cannot wait longer than about 49 days; such a recorded gap is simply cut short.
+    var maxDelay = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+    var delay = wakeup.At - DateTime.Now;
+    delay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay > maxDelay ? maxDelay : delay;
+    try
+    {
+        await Task.Delay(delay, cancellation);
+    }
+    catch (OperationCanceledException)
+    {
+        return;
+    }
+
+    Report(now => controller.WakeupDue(wakeup.Token, now));
+}
+
 await foreach (var input in inputs.Reader.ReadAllAsync())
 {
     foreach (var effect in input(DateTime.Now))
@@ -73,6 +94,12 @@ await foreach (var input in inputs.Reader.ReadAllAsync())
                 break;
             case RequestReconnect:
                 transport.Reconnect();
+                break;
+            case ScheduleWakeup wakeup:
+                pendingWakeup?.Cancel();
+                pendingWakeup?.Dispose();
+                pendingWakeup = CancellationTokenSource.CreateLinkedTokenSource(shutdown.Token);
+                _ = WakeAsync(wakeup, pendingWakeup.Token);
                 break;
             case ExitController exit:
                 shutdown.Cancel();

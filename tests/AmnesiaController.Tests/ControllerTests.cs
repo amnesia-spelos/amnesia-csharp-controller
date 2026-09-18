@@ -71,6 +71,9 @@ public class ControllerTests
     [InlineData("WARNING:Unknown command", LineCategory.Warning)]
     [InlineData("SCRIPT_CALL:OnCollide(\"Player\", \"Door\", 1)", LineCategory.ScriptCall)]
     [InlineData("Hello, from Amnesia: The Dark Descent!", LineCategory.Greeting)]
+    [InlineData("STATE localpose 123456 3 1.2500 -2.5000 3.7500 90.0000 -45.0000 1 maps/a.map", LineCategory.State)]
+    [InlineData("STATE not-a-valid-pose", LineCategory.State)]
+    [InlineData("STATElocalpose", LineCategory.Uncategorised)]
     [InlineData("custom_stories/a\tMy Story", LineCategory.Uncategorised)]
     [InlineData("response:lowercase is not a marker", LineCategory.Uncategorised)]
     public void Received_wire_line_is_shown_as_is_with_its_line_category(string line, LineCategory category)
@@ -151,7 +154,11 @@ public class ControllerTests
 
         Assert.All(effects, e => Assert.Equal(Direction.Notice, Assert.IsType<ShowLine>(e).Direction));
         var text = string.Join("\n", effects.Cast<ShowLine>().Select(s => s.Text));
-        foreach (var expected in new[] { "/help", "/quit", "/reconnect", "/clear", "/mute", "/unmute", "//" })
+        foreach (var expected in new[]
+                 {
+                     "/help", "/quit", "/reconnect", "/clear", "/mute", "/unmute", "//", "state",
+                     "/pose-record <seconds>", "/pose-record-stop", "/pose-record-cancel", "/pose-play [avatar-id]", "/pose-play-stop", "/pose-status",
+                 })
             Assert.Contains(expected, text);
     }
 
@@ -218,6 +225,19 @@ public class ControllerTests
         Assert.All(effects, e => Assert.Equal(Direction.Notice, Assert.IsType<ShowLine>(e).Direction));
     }
 
+    [Fact]
+    public void State_line_category_can_be_muted_without_hiding_uncategorised_lines()
+    {
+        var controller = ConnectedController();
+        controller.LineEntered("/mute state", T0);
+
+        var hidden = controller.WireLineReceived("STATE localpose 1 0 0.0000 0.0000 0.0000 0.0000 0.0000 0 m.map", T0);
+        var shown = controller.WireLineReceived("RESPONSE localpose ok subscribe 60", T0);
+
+        Assert.Empty(hidden);
+        Assert.Single(shown);
+    }
+
     [Theory]
     [InlineData("/mute")]
     [InlineData("/mute chat")]
@@ -276,6 +296,17 @@ public class ControllerTests
         controller.LineEntered("/mute script_call", T0);
         controller.InputEnded(T0);
         controller.WireLineReceived("SCRIPT_CALL:OnUpdate()", T0.AddMilliseconds(1500));
+
+        Assert.Empty(controller.TimePassed(T0.AddMilliseconds(3000)));
+    }
+
+    [Fact]
+    public void Muted_state_update_still_resets_the_linger_quiet_period()
+    {
+        var controller = ConnectedController();
+        controller.LineEntered("/mute state", T0);
+        controller.InputEnded(T0);
+        controller.WireLineReceived("STATE localpose 1 0 0.0000 0.0000 0.0000 0.0000 0.0000 0 m.map", T0.AddMilliseconds(1500));
 
         Assert.Empty(controller.TimePassed(T0.AddMilliseconds(3000)));
     }

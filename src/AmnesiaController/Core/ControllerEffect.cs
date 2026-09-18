@@ -18,6 +18,12 @@ public sealed record RequestReconnect : ControllerEffect;
 
 public sealed record ExitController(int ExitCode) : ControllerEffect;
 
+/// <summary>
+/// Report <see cref="Controller.WakeupDue"/> with <paramref name="Token"/> once <paramref name="At"/> has passed.
+/// A new wakeup supersedes any pending one, which may then be cancelled; a stale token has no effect.
+/// </summary>
+public sealed record ScheduleWakeup(DateTime At, long Token) : ControllerEffect;
+
 public enum Direction
 {
     /// <summary>Shown with <c>&gt;</c>.</summary>
@@ -34,6 +40,7 @@ public enum LineCategory
 {
     Response,
     Event,
+    State,
     Warning,
     ScriptCall,
     Greeting,
