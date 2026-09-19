@@ -9,6 +9,10 @@ public sealed partial class Controller
 
     private const string DefaultAvatarId = "a1";
 
+    // A wakeup later than this stretches the rest of the playback; a less late one is caught up on
+    // the next send, so timer granularity does not add up over a playback.
+    private static readonly TimeSpan MaxPlaybackLateness = TimeSpan.FromMilliseconds(100);
+
     private PoseRecording? _poseRecording;
     private PosePlayback? _posePlayback;
     private IReadOnlyList<PoseSample>? _poseRecordingBuffer;
@@ -91,11 +95,14 @@ public sealed partial class Controller
         return [Notice(now, $"Pose Playback stopped after {playback.Progress}; the Pose Recording Buffer is kept.")];
     }
 
-    /// <summary>Sends the next pose and any that share its game time, then waits the recorded delta from now.</summary>
+    /// <summary>Sends the next pose and any that share its game time, then waits until the next one is due.</summary>
     private IReadOnlyList<ControllerEffect> SendDuePoses(PosePlayback playback, DateTime now)
     {
         var effects = new List<ControllerEffect>();
         var samples = playback.Samples;
+        var lateness = now - playback.DueAt(playback.SentCount);
+        if (lateness > MaxPlaybackLateness)
+            playback.ScheduleStart += lateness;
         do
         {
             effects.AddRange(Send($"avatarpose {playback.AvatarId} {samples[playback.SentCount].Payload}", now));
@@ -111,9 +118,7 @@ public sealed partial class Controller
         }
 
         playback.WakeupToken = ++_lastWakeupToken;
-        double deltaMs = samples[playback.SentCount].TimeMs - samples[playback.SentCount - 1].TimeMs;
-        var at = deltaMs < (DateTime.MaxValue - now).TotalMilliseconds ? now.AddMilliseconds(deltaMs) : DateTime.MaxValue;
-        effects.Add(new ScheduleWakeup(at, playback.WakeupToken));
+        effects.Add(new ScheduleWakeup(playback.DueAt(playback.SentCount), playback.WakeupToken));
         return effects;
     }
 
@@ -210,6 +215,17 @@ public sealed partial class Controller
         public IReadOnlyList<PoseSample> Samples { get; } = samples;
 
         public DateTime StartedAt { get; } = startedAt;
+
+        /// <summary>When the first pose is due; later ones are due their recorded game time after it.</summary>
+        public DateTime ScheduleStart { get; set; } = startedAt;
+
+        public DateTime DueAt(int index)
+        {
+            double offsetMs = Samples[index].TimeMs - Samples[0].TimeMs;
+            return offsetMs < (DateTime.MaxValue - ScheduleStart).TotalMilliseconds
+                ? ScheduleStart.AddMilliseconds(offsetMs)
+                : DateTime.MaxValue;
+        }
 
         public int SentCount { get; set; }
 

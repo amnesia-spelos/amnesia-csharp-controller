@@ -1,0 +1,12 @@
+14:34:40.605 * Connecting to 127.0.0.1:5150. Type /help for Directives.
+14:34:40.631 * Connected.
+14:34:40.658 < Hello, from Amnesia: The Dark Descent!
+14:34:47.332 > ping
+14:34:47.358 < RESPONSE:ping:pong
+14:36:02.997 > startcustomstory:does-not-exist
+14:36:03.024 < RESPONSE:startcustomstory:not found
+14:36:34.605 > startcustomstory:mp-test-cs
+14:36:34.634 < RESPONSE:startcustomstory:starting
+14:36:34.987 < EVENT:CustomStoryStarted:mp-test-cs
+14:36:34.988 < EVENT:MapChanged:custom_stories/mp-test-cs/maps/multiplayer-test.map
+14:36:44.270 * Disconnected; retrying every second.

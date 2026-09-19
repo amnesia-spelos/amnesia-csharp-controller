@@ -74,8 +74,9 @@ localpose unsubscribe
 ```
 
 Playback sends every recorded pose in order as `avatarpose <avatar-id> <original State Update fields>`,
-unchanged, waiting the recorded game-time gap after each send. Poses with the same game time are sent together,
-and a late send stretches the rest of the playback instead of bursting. Each generated Command is shown as sent;
+unchanged, each due its recorded game time after the first, so timer granularity does not add up.
+Poses with the same game time are sent together, and a send more than 100 ms late stretches the rest of the playback
+instead of bursting. Each generated Command is shown as sent;
 a successful `avatarpose` has no Response.
 
 Recording and playback cannot run at the same time, and neither starts while disconnected.

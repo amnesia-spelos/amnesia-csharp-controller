@@ -92,6 +92,22 @@ public class PosePlaybackTests
     }
 
     [Fact]
+    public void Slightly_late_wakeups_keep_to_the_recorded_schedule_instead_of_adding_up()
+    {
+        // Each wakeup lands 12.5 ms late, as a 50 ms wait does on Windows' 15.6 ms timer.
+        var controller = ControllerWithBuffer(1000, 1050, 1100, 1150);
+        var wakeup = Wakeup(controller.LineEntered("/pose-play", T0));
+
+        var second = controller.WakeupDue(wakeup.Token, T0.AddMilliseconds(62.5));
+        var third = controller.WakeupDue(Wakeup(second).Token, T0.AddMilliseconds(112.5));
+
+        Assert.Equal(["avatarpose a1 " + Payload(1050, 1)], Sent(second));
+        Assert.Equal(T0.AddMilliseconds(100), Wakeup(second).At);
+        Assert.Equal(["avatarpose a1 " + Payload(1100, 2)], Sent(third));
+        Assert.Equal(T0.AddMilliseconds(150), Wakeup(third).At);
+    }
+
+    [Fact]
     public void One_sample_buffer_is_sent_once_and_completes_immediately()
     {
         var controller = ControllerWithBuffer(1000);
