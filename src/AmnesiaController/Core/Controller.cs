@@ -25,6 +25,14 @@ public sealed partial class Controller(TimeSpan linger)
         "  /pose-play [avatar-id]  play the buffer as paced avatarpose Commands (default a1)",
         "  /pose-play-stop         stop playback and keep the buffer",
         "  /pose-status            show the active operation and the buffer",
+        "Body Recording and Body Playback (negotiate, subscribe and entitydrive yourself):",
+        "  /bodies-record <seconds>  record Reported Bodies State Updates for up to 3600 s of game time",
+        "  /bodies-record-stop       finish the recording early (cancels before the first sample)",
+        "  /bodies-record-cancel     abandon the recording and keep the previous buffer",
+        "  /bodies-play              play the buffer as paced entitybodies Commands",
+        "  /bodies-play-stop         stop playback and keep the buffer",
+        "  /bodies-status            show the active operation and the buffer",
+        "Only one recording or playback, pose or bodies, runs at a time.",
         "Anything else is sent verbatim. Type // to send a line starting with /.",
     ];
 
@@ -49,15 +57,15 @@ public sealed partial class Controller(TimeSpan linger)
     {
         _lastReceivedAt = now;
         var category = LineCategories.Recognise(line);
-        var poseEffects = ObservePose(line, now);
+        var recordingEffects = ObserveRecordedStateUpdate(line, now);
 
         if (_hiddenCountByMutedCategory.TryGetValue(category, out var hidden))
         {
             _hiddenCountByMutedCategory[category] = hidden + 1;
-            return [.. poseEffects];
+            return [.. recordingEffects];
         }
 
-        return [new ShowLine(Timestamp(now), Direction.Received, category, line), .. poseEffects];
+        return [new ShowLine(Timestamp(now), Direction.Received, category, line), .. recordingEffects];
     }
 
     public IReadOnlyList<ControllerEffect> ConnectionEstablished(DateTime now)
@@ -70,7 +78,7 @@ public sealed partial class Controller(TimeSpan linger)
     public IReadOnlyList<ControllerEffect> ConnectionLost(DateTime now)
     {
         _connected = false;
-        return [Notice(now, "Disconnected; retrying every second."), .. CancelPoseOperationOnDisconnect(now)];
+        return [Notice(now, "Disconnected; retrying every second."), .. CancelOperationOnDisconnect(now)];
     }
 
     /// <summary>Piped input has no more lines; the Controller lingers for late Wire Lines, then exits.</summary>
@@ -82,7 +90,7 @@ public sealed partial class Controller(TimeSpan linger)
 
     public IReadOnlyList<ControllerEffect> TimePassed(DateTime now)
     {
-        if (_inputEndedAt is not { } inputEndedAt || ActivePoseOperation() is not null)
+        if (_inputEndedAt is not { } inputEndedAt || ActiveOperation() is not null)
             return [];
 
         var quietSince = inputEndedAt > _lastReceivedAt ? inputEndedAt : _lastReceivedAt;
@@ -114,12 +122,18 @@ public sealed partial class Controller(TimeSpan linger)
             "/reconnect" => [Notice(now, "Reconnecting."), new RequestReconnect()],
             "/mute" => [Mute(argument, now)],
             "/unmute" => [Unmute(argument, now)],
-            "/pose-record" => PoseRecord(argument, now),
-            "/pose-record-stop" => PoseRecordStop(now),
-            "/pose-record-cancel" => PoseRecordCancel(now),
+            "/pose-record" => Record(PoseKind, argument, now),
+            "/pose-record-stop" => RecordStop(PoseKind, now),
+            "/pose-record-cancel" => RecordCancel(PoseKind, now),
             "/pose-play" => PosePlay(argument, now),
-            "/pose-play-stop" => PosePlayStop(now),
-            "/pose-status" => PoseStatus(now),
+            "/pose-play-stop" => PlayStop(PoseKind, now),
+            "/pose-status" => Status(PoseKind, now),
+            "/bodies-record" => Record(BodyKind, argument, now),
+            "/bodies-record-stop" => RecordStop(BodyKind, now),
+            "/bodies-record-cancel" => RecordCancel(BodyKind, now),
+            "/bodies-play" => BodiesPlay(argument, now),
+            "/bodies-play-stop" => PlayStop(BodyKind, now),
+            "/bodies-status" => Status(BodyKind, now),
             _ => [Notice(now, $"Unknown Directive {name}; type /help. Nothing was sent.")],
         };
     }

@@ -36,9 +36,22 @@ _Avoid_: Replay buffer, recording slot
 Reproducing a Pose Recording as paced Avatar Pose Commands for an Avatar.
 _Avoid_: Replay
 
+**Body Recording**:
+The capture of Reported Bodies State Updates over an interval of game time.
+_Avoid_: Replay, capture
+
+**Body Recording Buffer**:
+The Controller's single in-memory sequence produced by a completed Body Recording, kept separately from the Pose Recording Buffer.
+_Avoid_: Replay buffer, recording slot
+
+**Body Playback**:
+Reproducing a Body Recording as paced Entity Bodies Commands for the Peer-Driven Entities it names.
+_Avoid_: Replay
+
 ## Relationships
 
 - A **Controller** is one Peer; running several Controllers exercises multi-Peer behaviour.
-- A **Controller** sends typed Wire Lines verbatim unless a developer invokes an explicit protocol automation such as **Pose Recording** or **Pose Playback**.
+- A **Controller** sends typed Wire Lines verbatim unless a developer invokes an explicit protocol automation such as **Pose Recording**, **Pose Playback**, **Body Recording** or **Body Playback**.
 - **Muting** is presentation only and is distinct from an Event Subscription, which the game honours.
-- **Muting** a State Update does not prevent it from participating in a **Pose Recording**.
+- **Muting** a State Update does not prevent it from participating in a **Pose Recording** or **Body Recording**.
+- Only one **Pose Recording**, **Pose Playback**, **Body Recording** or **Body Playback** is active at a time.
