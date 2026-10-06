@@ -6,6 +6,7 @@ internal static class LineCategories
     [
         ("RESPONSE:", LineCategory.Response),
         ("EVENT:", LineCategory.Event),
+        ("EVENT ", LineCategory.Event),
         ("STATE ", LineCategory.State),
         ("WARNING:", LineCategory.Warning),
         ("SCRIPT_CALL:", LineCategory.ScriptCall),

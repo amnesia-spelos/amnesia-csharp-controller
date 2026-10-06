@@ -48,7 +48,7 @@ Directives start with `/` and are never sent to the game. Type `//` to send a Wi
 | `/bodies-record <seconds>` | Arm a Body Recording of up to 3600 s of game time (e.g. `5` or `0.5`) |
 | `/bodies-record-stop` | Finish the recording early; before the first sample it cancels instead  |
 | `/bodies-record-cancel` | Abandon the recording and keep the previous Body Recording Buffer     |
-| `/bodies-play`        | Play the Body Recording Buffer as `entitybodies` Commands               |
+| `/bodies-play`        | Play the Body Recording Buffer as `entitybodies` Commands, and its Events as `entityinteracting` and `entitybreak` |
 | `/bodies-play-stop`   | Stop playback and keep the buffer                                       |
 | `/bodies-status`      | Show the active operation and the Body Recording Buffer                 |
 
@@ -91,8 +91,9 @@ A disconnection cancels the active one but keeps the buffer; in the new Session,
 
 ## Body Recording and Body Playback
 
-Record the bodies of a prop you carry and throw from `STATE reportedbodies` State Updates, then play them back
-into the same prop, driven as a Peer-Driven Entity, as paced `entitybodies` Commands.
+Record the bodies of a prop you carry, throw, swing or break from `STATE reportedbodies` State Updates,
+together with its interaction and break Events, then play them back into the same prop, driven as a Peer-Driven Entity,
+as paced `entitybodies`, `entityinteracting` and `entitybreak` Commands.
 This checks the driving side of the game on one PC. As with poses, the Controller never negotiates, subscribes,
 or sends `entitydrive` or `entityrelease` for you:
 
@@ -118,6 +119,23 @@ Invalid ones are shown but not recorded.
 
 `/bodies-play` takes no argument: it sends each sample as `entitybodies <original State Update fields>`, byte for byte,
 so it names the entities, bodies and map it was recorded with. Pacing is the same as Pose Playback.
+
+These Events are recorded too, even when muted, and played back as the Command that reproduces them:
+
+| Event                                               | Command sent                              |
+|-----------------------------------------------------|-------------------------------------------|
+| `EVENT interactionstart <entityId> <bodyId> <map>`  | `entityinteracting <entityId> 1 <map>`    |
+| `EVENT interactionend <entityId> <bodyId> <ending> <map>` | `entityinteracting <entityId> 0 <map>` |
+| `EVENT reportbroke <entityId> <state> <map>`        | `entitybreak <entityId> <state> <map>`    |
+
+An Event has no game time of its own, so it takes the game time of the State Update before it and is sent right after it.
+An Event that arrives while the recording is armed, such as the `interactionstart` of a grab, is sent just before the first sample.
+Events neither start nor end a recording, and a recording stopped before its first sample is cancelled even if it holds Events.
+An Event after the State Update that completes the recording is not recorded, so stop the recording yourself once the prop
+settles or breaks, or send `entityinteracting <entityId> 0 <map>` or `entityrelease` after playback.
+A prop that breaks while held ends its interaction with `destroyed` and sends no `reportbroke`, so its playback does not break it.
+`<ending>` is `released`, `thrown`, `too-far` or `destroyed`, and `<state>` is 13 numbers.
+Malformed Events, and `reportcontact` and `reportsettled`, which have no Command, are shown but not recorded.
 
 ## Replaying Wire Lines
 

@@ -26,10 +26,10 @@ public sealed partial class Controller(TimeSpan linger)
         "  /pose-play-stop         stop playback and keep the buffer",
         "  /pose-status            show the active operation and the buffer",
         "Body Recording and Body Playback (negotiate, subscribe and entitydrive yourself):",
-        "  /bodies-record <seconds>  record Reported Bodies State Updates for up to 3600 s of game time",
+        "  /bodies-record <seconds>  record Reported Bodies State Updates and interaction and break Events for up to 3600 s of game time",
         "  /bodies-record-stop       finish the recording early (cancels before the first sample)",
         "  /bodies-record-cancel     abandon the recording and keep the previous buffer",
-        "  /bodies-play              play the buffer as paced entitybodies Commands",
+        "  /bodies-play              play the buffer as paced entitybodies, entityinteracting and entitybreak Commands",
         "  /bodies-play-stop         stop playback and keep the buffer",
         "  /bodies-status            show the active operation and the buffer",
         "Only one recording or playback, pose or bodies, runs at a time.",
@@ -57,7 +57,7 @@ public sealed partial class Controller(TimeSpan linger)
     {
         _lastReceivedAt = now;
         var category = LineCategories.Recognise(line);
-        var recordingEffects = ObserveRecordedStateUpdate(line, now);
+        var recordingEffects = ObserveRecordedLine(line, now);
 
         if (_hiddenCountByMutedCategory.TryGetValue(category, out var hidden))
         {

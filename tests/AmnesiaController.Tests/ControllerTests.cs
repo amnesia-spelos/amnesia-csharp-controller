@@ -68,6 +68,8 @@ public class ControllerTests
     [Theory]
     [InlineData("RESPONSE:ping:pong", LineCategory.Response)]
     [InlineData("EVENT:MapChanged:maps/main/level02.map", LineCategory.Event)]
+    [InlineData("EVENT interactionstart 12 1 maps/cellar.map", LineCategory.Event)]
+    [InlineData("EVENTinteractionstart", LineCategory.Uncategorised)]
     [InlineData("WARNING:Unknown command", LineCategory.Warning)]
     [InlineData("SCRIPT_CALL:OnCollide(\"Player\", \"Door\", 1)", LineCategory.ScriptCall)]
     [InlineData("Hello, from Amnesia: The Dark Descent!", LineCategory.Greeting)]

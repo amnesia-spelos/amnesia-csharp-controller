@@ -5,6 +5,7 @@ namespace AmnesiaController.Core;
 /// <summary>
 /// Pose and Body Recording and Playback: the Controller's explicit protocol automation. Only one
 /// recording or playback, of either kind, is active at a time; each kind keeps its own buffer.
+/// A Body Recording also records interaction and break Events as the Commands that reproduce them.
 /// </summary>
 public sealed partial class Controller
 {
@@ -16,9 +17,10 @@ public sealed partial class Controller
     // the next send, so timer granularity does not add up over a playback.
     private static readonly TimeSpan MaxPlaybackLateness = TimeSpan.FromMilliseconds(100);
 
-    private static readonly RecordingKind PoseKind = new("Pose", "/pose-record", "Local Pose State Update", RecordedSample.TryParseLocalPose);
+    private static readonly RecordingKind PoseKind = new("Pose", "/pose-record", "Local Pose State Update", RecordedSample.TryParseLocalPose, null);
 
-    private static readonly RecordingKind BodyKind = new("Body", "/bodies-record", "Reported Bodies State Update", RecordedSample.TryParseReportedBodies);
+    private static readonly RecordingKind BodyKind =
+        new("Body", "/bodies-record", "Reported Bodies State Update", RecordedSample.TryParseReportedBodies, RecordedSample.TryParseInteractionEvent);
 
     private readonly Dictionary<RecordingKind, IReadOnlyList<RecordedSample>> _bufferByKind = [];
     private Recording? _recording;
@@ -123,7 +125,8 @@ public sealed partial class Controller
             playback.ScheduleStart += lateness;
         do
         {
-            effects.AddRange(Send(playback.CommandPrefix + samples[playback.SentCount].Payload, now));
+            var sample = samples[playback.SentCount];
+            effects.AddRange(Send(sample.IsEvent ? sample.Payload : playback.CommandPrefix + sample.Payload, now));
             playback.SentCount++;
         }
         while (playback.SentCount < samples.Count && samples[playback.SentCount].TimeMs == samples[playback.SentCount - 1].TimeMs);
@@ -131,7 +134,7 @@ public sealed partial class Controller
         if (playback.SentCount == samples.Count)
         {
             _playback = null;
-            effects.Add(Notice(now, $"{playback.Kind.PlaybackName} complete: {samples.Count} sample(s), {FormatSeconds((decimal)(now - playback.StartedAt).TotalMilliseconds)} s{playback.Target}."));
+            effects.Add(Notice(now, $"{playback.Kind.PlaybackName} complete: {CountSamplesAndEvents(samples)}, {FormatSeconds((decimal)(now - playback.StartedAt).TotalMilliseconds)} s{playback.Target}."));
             return effects;
         }
 
@@ -142,16 +145,30 @@ public sealed partial class Controller
 
     private static bool IsAvatarId(string id) => id.Length is >= 1 and <= 32 && id.All(c => c is >= '!' and <= '~' and not ':');
 
-    private IReadOnlyList<ControllerEffect> ObserveRecordedStateUpdate(string wireLine, DateTime now)
+    /// <summary>
+    /// Records a State Update of the active recording's kind, or an Event it records. An Event carries no game time,
+    /// so it takes that of the State Update before it, or of the first one if it arrives while the recording is armed.
+    /// </summary>
+    private IReadOnlyList<ControllerEffect> ObserveRecordedLine(string wireLine, DateTime now)
     {
-        if (_recording is not { } recording || !recording.Kind.TryParse(wireLine, out var sample))
+        if (_recording is not { } recording)
+            return [];
+
+        if (recording.Kind.TryParseEvent(wireLine, out var command))
+        {
+            recording.AddEvent(command);
+            return [];
+        }
+
+        if (!recording.Kind.TryParse(wireLine, out var sample))
             return [];
 
         if (recording.Samples.Count > 0 && sample.TimeMs < recording.Samples[^1].TimeMs)
             return [CancelRecording($"because game time went backwards from {recording.Samples[^1].TimeMs} ms to {sample.TimeMs} ms", now)];
 
-        recording.Samples.Add(sample);
-        if (recording.Samples.Count == 1)
+        var first = recording.Samples.Count == 0;
+        recording.AddSample(sample);
+        if (first)
             return [Notice(now, $"{recording.Kind.RecordingName} started at game time {sample.TimeMs} ms.")];
 
         return recording.OffsetMs < recording.DurationMs
@@ -199,7 +216,7 @@ public sealed partial class Controller
             ({ Samples.Count: 0 } recording, _) =>
                 $"{recording.Kind.RecordingName} armed for {FormatSeconds(recording.DurationMs)} s of game time; waiting for the first {recording.Kind.StateUpdate}.",
             ({ } recording, _) =>
-                $"{recording.Kind.RecordingName} started: {recording.Samples.Count} sample(s), {FormatSeconds(recording.OffsetMs)} of {FormatSeconds(recording.DurationMs)} s of game time; waiting for the boundary sample.",
+                $"{recording.Kind.RecordingName} started: {CountSamplesAndEvents(recording.Samples)}, {FormatSeconds(recording.OffsetMs)} of {FormatSeconds(recording.DurationMs)} s of game time; waiting for the boundary sample.",
             (_, { } playback) =>
                 $"{playback.Kind.PlaybackName}{playback.Target}: {playback.Progress} sent.",
             _ => "Recording and playback are idle.",
@@ -212,14 +229,27 @@ public sealed partial class Controller
     }
 
     private static string Describe(IReadOnlyList<RecordedSample> samples) =>
-        $"{samples.Count} sample(s), {FormatSeconds(samples[^1].TimeMs - samples[0].TimeMs)} s of game time";
+        $"{CountSamplesAndEvents(samples)}, {FormatSeconds(samples[^1].TimeMs - samples[0].TimeMs)} s of game time";
+
+    /// <summary>Counts State Updates as samples, and names Events only when there are any.</summary>
+    private static string CountSamplesAndEvents(IReadOnlyCollection<RecordedSample> samples)
+    {
+        var events = samples.Count(sample => sample.IsEvent);
+        var counted = $"{samples.Count - events} sample(s)";
+        return events == 0 ? counted : $"{counted} and {events} Event(s)";
+    }
 
     private static string FormatSeconds(decimal ms) => (ms / 1000).ToString("0.000", CultureInfo.InvariantCulture);
 
     private delegate bool SampleParser(string wireLine, out RecordedSample sample);
 
-    /// <summary>What a recording records and how it names itself: Local Pose or Reported Bodies State Updates.</summary>
-    private sealed class RecordingKind(string name, string recordDirective, string stateUpdate, SampleParser tryParse)
+    private delegate bool EventParser(string wireLine, out string command);
+
+    /// <summary>
+    /// What a recording records and how it names itself: Local Pose or Reported Bodies State Updates,
+    /// and any Events that <paramref name="tryParseEvent"/> turns into Commands.
+    /// </summary>
+    private sealed class RecordingKind(string name, string recordDirective, string stateUpdate, SampleParser tryParse, EventParser? tryParseEvent)
     {
         public string RecordingName { get; } = $"{name} Recording";
 
@@ -232,6 +262,12 @@ public sealed partial class Controller
         public string StateUpdate { get; } = stateUpdate;
 
         public bool TryParse(string wireLine, out RecordedSample sample) => tryParse(wireLine, out sample);
+
+        public bool TryParseEvent(string wireLine, out string command)
+        {
+            command = "";
+            return tryParseEvent is not null && tryParseEvent(wireLine, out command);
+        }
     }
 
     private sealed class Recording(RecordingKind kind, decimal durationMs)
@@ -240,9 +276,27 @@ public sealed partial class Controller
 
         public decimal DurationMs { get; } = durationMs;
 
+        private readonly List<string> _commandsWhileArmed = [];
+
+        /// <summary>State Updates and the Events among them, in the order received; empty while armed.</summary>
         public List<RecordedSample> Samples { get; } = [];
 
         public ulong OffsetMs => Samples[^1].TimeMs - Samples[0].TimeMs;
+
+        public void AddEvent(string command)
+        {
+            if (Samples.Count == 0)
+                _commandsWhileArmed.Add(command);
+            else
+                Samples.Add(new RecordedSample(Samples[^1].TimeMs, command, IsEvent: true));
+        }
+
+        public void AddSample(RecordedSample sample)
+        {
+            Samples.AddRange(_commandsWhileArmed.Select(command => new RecordedSample(sample.TimeMs, command, IsEvent: true)));
+            _commandsWhileArmed.Clear();
+            Samples.Add(sample);
+        }
     }
 
     /// <param name="commandPrefix">Prepended to each recorded payload to make the Command sent.</param>
@@ -274,6 +328,15 @@ public sealed partial class Controller
 
         public long WakeupToken { get; set; }
 
-        public string Progress => $"{SentCount} of {Samples.Count} sample(s)";
+        public string Progress
+        {
+            get
+            {
+                var events = Samples.Count(sample => sample.IsEvent);
+                var sentEvents = Samples.Take(SentCount).Count(sample => sample.IsEvent);
+                var progress = $"{SentCount - sentEvents} of {Samples.Count - events} sample(s)";
+                return events == 0 ? progress : $"{progress} and {sentEvents} of {events} Event(s)";
+            }
+        }
     }
 }
