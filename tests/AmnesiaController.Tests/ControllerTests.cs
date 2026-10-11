@@ -18,12 +18,12 @@ public class ControllerTests
     {
         var controller = ConnectedController();
 
-        var effects = controller.LineEntered("chat:Žofie:ahoj 👋 ", T0);
+        var effects = controller.LineEntered("chatentry ff4040 - Žofie:ahoj 👋 ", T0);
 
         Assert.Equal(
             [
-                new SendWireLine("chat:Žofie:ahoj 👋 "),
-                new ShowLine("14:30:05.123", Direction.Sent, null, "chat:Žofie:ahoj 👋 "),
+                new SendWireLine("chatentry ff4040 - Žofie:ahoj 👋 "),
+                new ShowLine("14:30:05.123", Direction.Sent, null, "chatentry ff4040 - Žofie:ahoj 👋 "),
             ],
             effects);
     }
